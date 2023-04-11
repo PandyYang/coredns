@@ -3,12 +3,8 @@ package nti
 import (
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
-
-	//clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/plugin"
 )
-
-//var log = clog.NewWithPlugin("nti")
 
 func init() {
 	plugin.Register("nti", func(c *caddy.Controller) error {

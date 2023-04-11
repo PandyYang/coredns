@@ -1,0 +1,9 @@
+. {
+    nti {
+        dns_black_address 114.114.114.114
+        dns_white_address 8.8.8.8
+    }
+    forward . 8.8.8.8
+    log
+    errors
+}
