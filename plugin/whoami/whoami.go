@@ -4,6 +4,7 @@ package whoami
 
 import (
 	"context"
+	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"net"
 	"strconv"
 
@@ -14,12 +15,15 @@ import (
 
 const name = "whoami"
 
+var log = clog.NewWithPlugin("nti")
+
 // Whoami is a plugin that returns your IP address, port and the protocol used for connecting
 // to CoreDNS.
 type Whoami struct{}
 
 // ServeDNS implements the plugin.Handler interface.
 func (wh Whoami) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+	log.Info("this is whoami, so what's the problem?")
 	state := request.Request{W: w, Req: r}
 
 	a := new(dns.Msg)

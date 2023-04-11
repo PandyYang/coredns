@@ -2,62 +2,60 @@ package nti
 
 import (
 	"context"
-	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
-	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 	"net"
-	"strconv"
 )
 
 const name = "nti"
 
 var log = clog.NewWithPlugin("nti")
 
-type Nti struct {
-	Next plugin.Handler
+type SDKPlugin struct {
+	blackDNSAddress string
+	whiteDNSAddress string
 }
 
-func (nti Nti) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+func (h SDKPlugin) Name() string {
+	return name
+}
 
-	log.Info("Received response")
-	state := request.Request{W: w, Req: r}
-
-	a := new(dns.Msg)
-	a.SetReply(r)
-	a.Authoritative = true
-
-	ip := state.IP()
-	var rr dns.RR
-
-	switch state.Family() {
-	case 1:
-		rr = new(dns.A)
-		rr.(*dns.A).Hdr = dns.RR_Header{Name: state.QName(), Rrtype: dns.TypeA, Class: state.QClass()}
-		rr.(*dns.A).A = net.ParseIP(ip).To4()
-	case 2:
-		rr = new(dns.AAAA)
-		rr.(*dns.AAAA).Hdr = dns.RR_Header{Name: state.QName(), Rrtype: dns.TypeAAAA, Class: state.QClass()}
-		rr.(*dns.AAAA).AAAA = net.ParseIP(ip)
+func (h SDKPlugin) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+	m := new(dns.Msg)
+	m.SetReply(r)
+	log.Infof("handle the domain: %s, length: %d", r.Question[0].Name, len(r.Question[0].Name))
+	// 检查查询是否在黑名单中
+	if len(r.Question[0].Name) > 13 {
+		log.Info("black")
+		// 将查询转发到黑名单 DNS
+		blackServer := net.JoinHostPort(h.blackDNSAddress, "53")
+		c := new(dns.Client)
+		resp, _, err := c.Exchange(r, blackServer)
+		if err != nil {
+			log.Info(err.Error())
+			return dns.RcodeServerFailure, err
+		}
+		m.Answer = resp.Answer
+		m.Ns = resp.Ns
+		m.Extra = resp.Extra
+	} else {
+		// 将查询转发到白名单 DNS
+		log.Info("white")
+		whiteServer := net.JoinHostPort(h.whiteDNSAddress, "53")
+		c := new(dns.Client)
+		resp, _, err := c.Exchange(r, whiteServer)
+		if err != nil {
+			return dns.RcodeServerFailure, err
+		}
+		m.Answer = resp.Answer
+		m.Ns = resp.Ns
+		m.Extra = resp.Extra
 	}
 
-	srv := new(dns.SRV)
-	srv.Hdr = dns.RR_Header{Name: "_" + state.Proto() + "." + state.QName(), Rrtype: dns.TypeSRV, Class: state.QClass()}
-	if state.QName() == "." {
-		srv.Hdr.Name = "_" + state.Proto() + state.QName()
-	}
-	port, _ := strconv.ParseUint(state.Port(), 10, 16)
-	srv.Port = uint16(port)
-	srv.Target = "."
-
-	a.Extra = []dns.RR{rr, srv}
-
-	err := w.WriteMsg(a)
+	err := w.WriteMsg(m)
 	if err != nil {
-		return 0, err
+		return dns.RcodeServerFailure, err
 	}
 
-	return 0, nil
+	return dns.RcodeSuccess, nil
 }
-
-func (nti Nti) Name() string { return name }
