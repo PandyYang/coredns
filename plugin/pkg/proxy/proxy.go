@@ -12,8 +12,9 @@ import (
 
 // Proxy defines an upstream host.
 type Proxy struct {
-	fails uint32
-	addr  string
+	fails     uint32
+	addr      string
+	proxyName string
 
 	transport *Transport
 
@@ -25,15 +26,17 @@ type Proxy struct {
 }
 
 // NewProxy returns a new proxy.
-func NewProxy(addr, trans string) *Proxy {
+func NewProxy(proxyName, addr, trans string) *Proxy {
 	p := &Proxy{
 		addr:        addr,
 		fails:       0,
 		probe:       up.New(),
 		readTimeout: 2 * time.Second,
-		transport:   newTransport(addr),
+		transport:   newTransport(proxyName, addr),
+		health:      NewHealthChecker(proxyName, trans, true, "."),
+		proxyName:   proxyName,
 	}
-	p.health = NewHealthChecker(trans, true, ".")
+
 	runtime.SetFinalizer(p, (*Proxy).finalizer)
 	return p
 }
@@ -91,6 +94,16 @@ func (p *Proxy) Start(duration time.Duration) {
 
 func (p *Proxy) SetReadTimeout(duration time.Duration) {
 	p.readTimeout = duration
+}
+
+// incrementFails increments the number of fails safely.
+func (p *Proxy) incrementFails() {
+	curVal := atomic.LoadUint32(&p.fails)
+	if curVal > curVal+1 {
+		// overflow occurred, do not update the counter again
+		return
+	}
+	atomic.AddUint32(&p.fails, 1)
 }
 
 const (
